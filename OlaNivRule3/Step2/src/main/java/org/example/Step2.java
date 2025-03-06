@@ -237,19 +237,19 @@ public class Step2 {
 
                     Text lkey = new Text(l);
 
-                    Double pl = ls.get(l); //p(l)
-                    Double pf = fs.get(f); //p(f)
-                    Double plandf = lfs.get(l).get(f).getKey(); //p(l,f)
-                    Double pfGivenl = lfs.get(l).get(f).getValue(); //p(f|l)
+                    double pl = ls.get(l); //p(l)
+                    double pf = fs.get(f); //p(f)
+                    double plandf = lfs.get(l).get(f).getKey(); //p(l,f)
+                    double pfGivenl = lfs.get(l).get(f).getValue(); //p(f|l)
 
                     //5: count(l,f) -> p(l,f) * L (because we get the probabilities, not counts)
-                    Double lf5 = plandf * lsSize;
+                    double lf5 = plandf * lsSize;
                     //6: P(f|l)
-                    Double lf6 = pfGivenl;
+                    double lf6 = pfGivenl;
                     //7: log_2(p(l,f)/(p(l)*p(f)))
-                    Double lf7 = Math.log(plandf / (pl * pf)) / Math.log(2);
+                    double lf7 = Math.log(plandf / (pl * pf)) / Math.log(2);
                     //8: (p(l,f) - p(l)*p(f))/(sqrt(p(l)*p(f)))
-                    Double lf8 = (plandf - pl * pf) / Math.sqrt(pl * pf);
+                    double lf8 = (plandf - pl * pf) / Math.sqrt(pl * pf);
 
                     int index = fIndexes.get(f);
 
@@ -283,7 +283,7 @@ public class Step2 {
         job.setJarByClass(Step2.class);
         job.setMapperClass(MapperClass.class);
         job.setPartitionerClass(PartitionerClass.class);
-        job.setCombinerClass(ReducerClass.class);
+//        job.setCombinerClass(ReducerClass.class);
         job.setReducerClass(ReducerClass.class);
         job.setMapOutputKeyClass(Text.class);
         job.setMapOutputValueClass(IntWritable.class);

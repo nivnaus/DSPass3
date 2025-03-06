@@ -43,7 +43,7 @@ public class App {
         // Step 1
 
         HadoopJarStepConfig step1 = new HadoopJarStepConfig()
-                .withJar("s3://nivolarule29122024/jars/Step1.jar")
+                .withJar("s3://nivolarule05032025/jars/Step1.jar")
                 .withMainClass("Step1");
 
         StepConfig stepConfig1 = new StepConfig()
@@ -53,7 +53,7 @@ public class App {
 
         // Step 2
         HadoopJarStepConfig step2 = new HadoopJarStepConfig()
-                .withJar("s3://nivolarule29122024/jars/Step2.jar")
+                .withJar("s3://nivolarule05032025/jars/Step2.jar")
                 .withMainClass("Step2");
 
         StepConfig stepConfig2 = new StepConfig()
@@ -63,7 +63,7 @@ public class App {
 
         // Step 3
         HadoopJarStepConfig step3 = new HadoopJarStepConfig()
-                .withJar("s3://nivolarule29122024/jars/Step3.jar")
+                .withJar("s3://nivolarule05032025/jars/Step3.jar")
                 .withMainClass("Step3");
 
         StepConfig stepConfig3 = new StepConfig()
@@ -87,7 +87,7 @@ public class App {
                 .withName("Map reduce project")
                 .withInstances(instances)
                 .withSteps(stepConfig1, stepConfig2, stepConfig3)
-                .withLogUri("s3://nivolarule29122024/logs/")
+                .withLogUri("s3://nivolarule05032025/logs/")
                 .withServiceRole("EMR_DefaultRole")
                 .withJobFlowRole("EMR_EC2_DefaultRole")
                 .withReleaseLabel("emr-5.11.0");
