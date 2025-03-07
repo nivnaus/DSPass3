@@ -15,66 +15,58 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.fs.FileSystem;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 
 public class Step1 {
     public static class MapperClass extends Mapper<LongWritable, Text, Text, IntWritable> {
         private final static IntWritable one = new IntWritable(1);
         Stemmer stemmer = new Stemmer();
         private final Text mapKey = new Text();
-
-        @Override // experience     that/IN/compl/3 patients/NNS/nsubj/3 experience/VB/ccomp/0      3092
-        // "^   i/FW/nn/3 i/FW/nn/3 "^/FW/dep/0 28	2000,28
-        public void map(LongWritable key, Text value, Context context) throws IOException,  InterruptedException {
+//        private final HashSet<String> stopWords = new HashSet<>(Arrays.asList(
+//                "״", "׳", "־", "^", "?", ";", ":", ".", "-", "*", "\"", "!"
+//                , ")", "(", "#", "$", "%", "&", "'", "+", ",", "/"
+//                , "=", "@", "[", "]", "{", "}", "|", "<", ">", "_", "`", "~"
+//        ));
+        // $	$/$/pobj/0 $/$/conj/1 $/$/conj/1 as/RB/mwe/5 well/RB/cc/1 as/IN/mwe/5	11	1994,3	1997,3	2002,2	2003,3
+             // experience     that/IN/compl/3 patients/NNS/nsubj/3 experience/VB/ccomp/0      3092
+        @Override
+        public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             System.out.println(value.toString());
             String[] rowParts = value.toString().split("\t");
-            String[] wordNodes = rowParts[1].split(" ");
+            String[] wordNodes = rowParts[1].split(" "); // $///pobj/0 asd/asd/conj/1 as/RB/mwe/5 well/RB/cc/1 $/$/mwe/5
 
-            // the 0th is empty in these
             List<String> words = new ArrayList<>();
             List<String> descriptions = new ArrayList<>();
             List<Integer> destinations = new ArrayList<>();
 
             int wordNodesSize = 0;
-            for(String word : wordNodes) { //3
-                String[] wordParts = word.split("/");
+            for (String wordNode : wordNodes) {
+                String[] wordParts = wordNode.split("/");
 
-                int bias = 0;
-                String unStemmedWord;
-                String edgeDescription;
-                int edgeDestination;
+                if (wordParts.length > 4) return; // not //
+                String rawWord = wordParts[0]; // Extract the actual word (before first `/`)
+                String secondParam = wordParts[1];
 
-                //todo: fix later
-                if(wordParts.length == 4) { //that/IN/compl/3
-                    unStemmedWord = wordParts[bias];
-                } else if(wordParts.length == 5) { //  //IN/compl/3
-                    bias = 1;
-                    unStemmedWord = "/";
-                } else  { // ////ROOT/0 todo: i hope that this is the only 'else'
-                    bias = wordParts.length - 4;
-                    unStemmedWord = "/";
-                }
+                // **Skip if it's a stop word**
+                if (!rawWord.matches("[a-zA-Z]+") || !secondParam.matches("[a-zA-Z]+")) return;
 
-                edgeDescription = wordParts[2 + bias];
-                edgeDestination = Integer.parseInt(wordParts[3 + bias]);
+                // **Process valid words**
+                String edgeDescription = wordParts[2];
+                int edgeDestination = Integer.parseInt(wordParts[3]);
 
-
-                stemmer.add(unStemmedWord.toCharArray(),unStemmedWord.length());
+                // Apply stemming
+                stemmer.add(rawWord.toCharArray(), rawWord.length());
                 stemmer.stem();
                 String stemmedWord = stemmer.toString();
 
                 words.add(stemmedWord);
                 descriptions.add(edgeDescription);
                 destinations.add(edgeDestination);
-
                 wordNodesSize++;
             }
 
             for(int j = 0; j < wordNodesSize; j++) {
-                mapKey.set("$" + words.get(j));
+                mapKey.set("+" + words.get(j)); //words: 0,that 1,patients 2,experience size: 3
                 // count(l)
                 context.write(mapKey, one);
 
@@ -93,7 +85,11 @@ public class Step1 {
                     mapKey.set(wordDesc);
                     context.write(mapKey, one);
 
-                    // count(l,f)
+                    //j = 0 -> expericnce#that-compl
+                    //words[2]#
+                    //that/IN/compl/3 patients/NNS/nsubj/3 experience/VB/ccomp/0
+                    //expericnce#that-compl, experience#patients-nsubj
+                    // count(l,f) //words: 0,that 1,patients 2,experience size: 3
                     mapKey.set(words.get(destinations.get(j) - 1) + "#" + wordDesc);
                     context.write(mapKey, one);
 
@@ -116,18 +112,19 @@ public class Step1 {
 
         @Override// (*L3,[1,1,1,1,1,...])
         public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException,  InterruptedException {
-            // lexicographically * -> $ -> else.
+            // lexicographically * -> + -> else.
             double sum = 0;
             for (IntWritable value : values) {
                 sum += value.get();
             }
 
-            if(key.charAt(0) == '*') {
-                if(key.charAt(1) == 'L')
+
+            if(key.toString().charAt(0) == '*') {// TODO - need to decide if toString is needed.
+                if(key.toString().charAt(1) == 'L')// TODO - need to decide if toString is needed.
                     L = sum;
-                if(key.charAt(1) == 'F')
+                if(key.toString().charAt(1) == 'F')// TODO - need to decide if toString is needed.
                     F = sum;
-            } else if(key.charAt(0) == '$') { //p(l)
+            } else if(key.toString().charAt(0) == '+') { //p(l) - TODO - need to decide if toString is needed.
                 double prob = sum / L;
                 String lexema = key.toString().substring(1);
                 hashMap.put(lexema,sum);
@@ -141,11 +138,6 @@ public class Step1 {
                     double probLf = sum / L; // p(l,f)
                     context.write(new Text(l+","+f),new DoubleWritable(probLf));
 
-                    // l = *h , l = $*h  , l|f -> *h|dog-subj
-                    //todo: null pointer exception here 6.3 22:48
-                    // can be because some words are starting for example in * , and then its before $, so l doesnt exist yet in the map.
-                    // f that
-                    // option: fix so that words/features that continue are only alphabetical.
                     double probLGivenF = sum / hashMap.get(l); // p(f | l) = count(l,f) / count(L=l)
                     context.write(new Text(l+"|"+f), new DoubleWritable(probLGivenF));
                 } else { //p(f)
@@ -163,12 +155,18 @@ public class Step1 {
         public int getPartition(Text key, IntWritable value, int numPartitions) {
             //so that every reducer will receive *F or *L for sure.
             List<String> FAndL = Arrays.asList("*F1", "*F2", "*F3", "*L1", "*L2", "*L3");
-            if(FAndL.contains(key.toString())){
+            if(FAndL.contains(key.toString())){// TODO - need to decide if toString is needed.
                 return key.charAt(2) - '1';
             }
-            return Math.abs(key.hashCode()) % 3;
+            if(key.find("#") != -1) { // $l, l#f we want $l and l#f to be together -> isolate $l in both
+                String l = "+" + key.toString().split("#")[0];
+                return Math.abs(l.hashCode()) % 3;
+            }
+
+            return Math.abs(key.toString().hashCode()) % 3;
         }
     }
+
     public static void main(String[] args) throws Exception {
         System.out.println("[DEBUG] STEP 1 started!");
         System.out.println(args.length > 0 ? args[0] : "no args");

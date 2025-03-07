@@ -3,7 +3,6 @@ package org.example;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.S3Object;
-import javafx.util.Pair;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -19,6 +18,7 @@ import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.fs.FileSystem;
+import org.example.Pair;
 
 
 import javax.naming.Context;
@@ -191,7 +191,7 @@ public class Step2 {
                     }
                 } else {
                     HashMap<String, Pair<Double, Double>> fsHash = new HashMap<>();
-                    fsHash.put(f, new Pair<>(p, 0.0));
+                    fsHash.put(f, new Pair<Double, Double>(p, 0.0));
                     lfs.put(l, fsHash);
                 }
             } else if(lORf.indexOf('-') != -1) { // p(f)
