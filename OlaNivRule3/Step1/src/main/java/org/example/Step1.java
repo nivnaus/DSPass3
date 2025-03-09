@@ -13,6 +13,8 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 
 import java.io.*;
 import java.util.*;
@@ -22,11 +24,7 @@ public class Step1 {
         private final static IntWritable one = new IntWritable(1);
         Stemmer stemmer = new Stemmer();
         private final Text mapKey = new Text();
-//        private final HashSet<String> stopWords = new HashSet<>(Arrays.asList(
-//                "״", "׳", "־", "^", "?", ";", ":", ".", "-", "*", "\"", "!"
-//                , ")", "(", "#", "$", "%", "&", "'", "+", ",", "/"
-//                , "=", "@", "[", "]", "{", "}", "|", "<", ">", "_", "`", "~"
-//        ));
+
         // $	$/$/pobj/0 $/$/conj/1 $/$/conj/1 as/RB/mwe/5 well/RB/cc/1 as/IN/mwe/5	11	1994,3	1997,3	2002,2	2003,3
              // experience     that/IN/compl/3 patients/NNS/nsubj/3 experience/VB/ccomp/0      3092
         @Override
@@ -108,57 +106,77 @@ public class Step1 {
     public static class ReducerClass extends Reducer<Text,IntWritable,Text, DoubleWritable> {
         double L = 0;
         double F = 0;
-        public HashMap<String,Double> hashMap = new HashMap<>(); // l, sum
+        public HashMap<String, Double> hashMap = new HashMap<>(); // l, sum
+        private MultipleOutputs<Text, DoubleWritable> multipleOutputs;
+
+        @Override
+        public void setup(Context context) throws IOException, InterruptedException {
+            multipleOutputs = new MultipleOutputs<>(context);
+        }
 
         @Override// (*L3,[1,1,1,1,1,...])
-        public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException,  InterruptedException {
+        public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
             // lexicographically * -> + -> else.
+            Configuration conf = context.getConfiguration();
+            String s3Path = "s3://nivolarule05032025/lxf.txt";
+
+            Path path = new Path(s3Path);
+            FileSystem fs = FileSystem.get(path.toUri(), conf); // Automatically uses the Hadoop configuration
             double sum = 0;
             for (IntWritable value : values) {
                 sum += value.get();
             }
 
 
-            if(key.toString().charAt(0) == '*') {// TODO - need to decide if toString is needed.
-                if(key.toString().charAt(1) == 'L')// TODO - need to decide if toString is needed.
+            if (key.charAt(0) == '*') {
+                if (key.charAt(1) == 'L')
                     L = sum;
-                if(key.toString().charAt(1) == 'F')// TODO - need to decide if toString is needed.
+                if (key.charAt(1) == 'F')
                     F = sum;
-            } else if(key.toString().charAt(0) == '+') { //p(l) - TODO - need to decide if toString is needed.
+            } else if (key.charAt(0) == '+') { //p(l)
+                //write l to lxf
                 double prob = sum / L;
                 String lexema = key.toString().substring(1);
-                hashMap.put(lexema,sum);
-                context.write(new Text(lexema), new DoubleWritable(prob));
+                hashMap.put(lexema, sum);
+                multipleOutputs.write("output1", new Text(lexema), new DoubleWritable(prob), "output1/part");
+                // Append lexeme to lxf.txt
+                multipleOutputs.write("output2", new Text(lexema), new DoubleWritable(0.0), "output2/part");
             } else {
                 // we enter if its l#f
-                if(key.find("#") != -1) { //p(l,f), p(f | l)
+                if (key.find("#") != -1) { //p(l,f), p(f | l)
                     String l = key.toString().split("#")[0];
                     String f = key.toString().split("#")[1];
 
                     double probLf = sum / L; // p(l,f)
-                    context.write(new Text(l+","+f),new DoubleWritable(probLf));
+                    multipleOutputs.write("output1", new Text(l + "," + f), new DoubleWritable(probLf), "output1/part");
 
                     double probLGivenF = sum / hashMap.get(l); // p(f | l) = count(l,f) / count(L=l)
-                    context.write(new Text(l+"|"+f), new DoubleWritable(probLGivenF));
+                    multipleOutputs.write("output1", new Text(l + "|" + f), new DoubleWritable(probLGivenF), "output1/part");
                 } else { //p(f)
                     double prob = sum / F;
-                    context.write(key, new DoubleWritable(prob));
+                    multipleOutputs.write("output1", key, new DoubleWritable(prob), "output1/part");
+                    //write key(feature) to lxf
+                    multipleOutputs.write("output2", key, new DoubleWritable(0.0), "output2/part");
                 }
             }
         }
+
+        @Override
+        protected void cleanup (Reducer < Text, IntWritable, Text, DoubleWritable >.Context context) throws
+        IOException, InterruptedException {
+            multipleOutputs.close();
+        }
     }
-
-
 
     public static class PartitionerClass extends Partitioner<Text, IntWritable> {
         @Override
         public int getPartition(Text key, IntWritable value, int numPartitions) {
             //so that every reducer will receive *F or *L for sure.
             List<String> FAndL = Arrays.asList("*F1", "*F2", "*F3", "*L1", "*L2", "*L3");
-            if(FAndL.contains(key.toString())){// TODO - need to decide if toString is needed.
+            if(FAndL.contains(key.toString())){
                 return key.charAt(2) - '1';
             }
-            if(key.find("#") != -1) { // $l, l#f we want $l and l#f to be together -> isolate $l in both
+            if(key.find("#") != -1) { // +l, l#f we want +l and l#f to be together -> isolate +l in both
                 String l = "+" + key.toString().split("#")[0];
                 return Math.abs(l.hashCode()) % 3;
             }
@@ -186,7 +204,10 @@ public class Step1 {
         // start with a smaller file
         // 0-98.txt
         TextInputFormat.addInputPath(job, new Path("s3://biarcs/0.txt"));
-        FileOutputFormat.setOutputPath(job, new Path("s3://nivolarule05032025/probs.txt"));
+        FileOutputFormat.setOutputPath(job, new Path("s3://nivolarule05032025/output"));
+        MultipleOutputs.addNamedOutput(job, "output1", TextOutputFormat.class, Text.class, DoubleWritable.class);
+        MultipleOutputs.addNamedOutput(job, "output2", TextOutputFormat.class, Text.class, DoubleWritable.class);
+
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }

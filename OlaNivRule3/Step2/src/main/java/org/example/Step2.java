@@ -2,7 +2,9 @@ package org.example;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -33,106 +35,8 @@ import java.util.Map;
 
 public class Step2 {
 
-    public static class MapperClass extends Mapper<LongWritable, Text, Text, IntWritable> {
+    public static class MapperClass extends Mapper<LongWritable, Text, Text, Text> {
         private final static IntWritable one = new IntWritable(1);
-//        private final Text mapKey = new Text();
-//        // f, p(f)
-//        private final HashMap<String, Double> fs = new HashMap<String, Double>();
-//
-//        //f , place in co-vector
-//
-//        // l, p(l)
-//        private final HashMap<String, Double> ls = new HashMap<String, Double>();
-//        // <l, <f, <p(l,f), p(l|f)>>>
-//        // dog, <like, <0.34, 0.0>>
-//        private final HashMap<String, HashMap<String, Pair<Double, Double>>> lfs = new HashMap<>();
-
-
-        @Override // like    0.43   OR    like,dog-subj     0.843   OR   dog-subj   0.31   OR   like|dog-subj   0.95
-        public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-            context.write(value, one);
-//            String[] rowParts = value.toString().split("\t");
-//            String lORf = rowParts[0]; // l or f ?
-//            Double p = Double.parseDouble(rowParts[1]);
-//
-//            if(lORf.indexOf('|') != -1) { //p(l|f)
-//                String[] parts = lORf.split("\\|");
-//                String l = parts[0];
-//                String f = parts[1];
-//                if(lfs.containsKey(l)) {
-//                    //all fs that were near l
-//                    HashMap<String, Pair<Double, Double>> fsHash = lfs.get(l);
-//                    if(fsHash.containsKey(f)) {
-//                        Pair<Double, Double> pLF = fsHash.get(f);
-//                        pLF = new Pair<Double, Double>(pLF.getKey(), p);
-//                        fsHash.put(f, pLF);
-//                    } else {
-//                        fsHash.put(f, new Pair<Double, Double>(0.0, p));
-//                    }
-//                } else {
-//                    HashMap<String, Pair<Double, Double>> fsHash = new HashMap<>();
-//                    fsHash.put(f, new Pair<>(0.0, p));
-//                    lfs.put(l, fsHash);
-//                }
-//            } else if(lORf.indexOf(',') != -1) { // p(l,f)
-//                String[] parts = lORf.split(",");
-//                String l = parts[0];
-//                String f = parts[1];
-//                if(lfs.containsKey(l)) {
-//                    //all fs that were near l
-//                    HashMap<String, Pair<Double, Double>> fsHash = lfs.get(l);
-//                    if(fsHash.containsKey(f)) {
-//                        Pair<Double, Double> pLF = fsHash.get(f);
-//                        pLF = new Pair<Double, Double>(p, pLF.getValue());
-//                        fsHash.put(f, pLF);
-//                    } else {
-//                        fsHash.put(f, new Pair<Double, Double>(p, 0.0));
-//                    }
-//                } else {
-//                    HashMap<String, Pair<Double, Double>> fsHash = new HashMap<>();
-//                    fsHash.put(f, new Pair<>(p, 0.0));
-//                    lfs.put(l, fsHash);
-//                }
-//            } else if(lORf.indexOf('-') != -1) { // p(f)
-//                fs.put(lORf, p);
-//            } else { // p(l)
-//                ls.put(lORf, p);
-//            }
-        }
-
-        @Override
-        public void cleanup(Mapper<LongWritable, Text, Text, IntWritable>.Context context) throws IOException, InterruptedException {
-//            for(String l : ls.keySet()) {
-//                for(String f : fs.keySet()) {
-//                    // if l * f doesn't exist in lfs, add l * f with 0s
-//                    if(!lfs.containsKey(l) || !lfs.get(l).containsKey(f)) {
-//                        if(!lfs.containsKey(l)) {
-//                            lfs.put(l, new HashMap<>());
-//                        }
-//                        lfs.get(l).put(f, new Pair<>(0.0, 0.0));
-//                    }
-//                }
-//            }
-//            // <l, <f, <p(l,f), p(l|f)>>>
-//            for(Map.Entry<String, HashMap<String, Pair<Double, Double>>> lHash: lfs.entrySet()) {
-//                String l = lHash.getKey();
-//                HashMap<String, Pair<Double, Double>> lh = lHash.getValue();
-//
-//                for(Map.Entry<String, Pair<Double, Double>> fProbs : lh.entrySet()) {
-//                    String f = fProbs.getKey();
-//                    Pair<Double, Double> prob = fProbs.getValue();
-//
-//                    Text lkey = new Text(l);
-//
-//                    // <l, "f,p(l),p(f),p(l,f),p(l|f)">
-//                    context.write(lkey, new Text(f + "," + ls.get(l) + "," + fs.get(f) + "," + lfs.get(l).get(f).getKey() + "," + lfs.get(l).get(f).getValue()));
-//                }
-//            }
-//        }
-        }
-    }
-
-    public static class ReducerClass extends Reducer<Text,IntWritable,Text,Text> {
         private final Text mapKey = new Text();
         // f, p(f)
         private final HashMap<String, Double> fs = new HashMap<String, Double>();
@@ -146,132 +50,198 @@ public class Step2 {
         // <l, <f, <p(l,f), p(f|l)>>>
         private final HashMap<String, HashMap<String, Pair<Double, Double>>> lfs = new HashMap<>();
 
+        @Override
+        protected void setup(Mapper<LongWritable, Text, Text, Text>.Context context) throws IOException, InterruptedException {
+            // Create S3 client (AWS SDK will automatically pick up credentials)
+            AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
+                    .withRegion("us-east-1")  // Specify the region your bucket is in
+                    .build();
+            // Specify your S3 bucket and object key
+            String bucketName = "nivolarule05032025";
+            String dirPath = "output/output2/"; // add 00001, 00002...
 
-        @Override // l ["f1,p(l),p(f1),p(l,f1),p(l|f1)", "f2,p(l),p(f2),p(l,f2),p(l|f2)", ... ]
-        public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException,  InterruptedException {
-            Text value = key; // redundant, from mapper.
+//            // Read file from S3
+//            try {
+//                S3Object s3Object = s3Client.getObject(bucketName, key);
+//                BufferedReader reader = new BufferedReader(new InputStreamReader(s3Object.getObjectContent()));
+//                String line; //  l\t0.0 or f\t0.0
+//                while ((line = reader.readLine()) != null) {
+//                    String word = line.split("\t")[0];
+//                    if (word.indexOf('-') != -1) { // feature
+//                        fs.put(word, 0.0);
+//                        fIndexes.put(word, fi);
+//                        fi++;
+//                    } else { //lexema
+//                        ls.put(word, 0.0);
+//                    }
+//                }
+//                reader.close();
+//            } catch (IOException e) {
+//                System.err.println("Error reading from S3: " + e.getMessage());
+//            }
+
+            ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, dirPath);
+            for (S3ObjectSummary summary : result.getObjectSummaries()) {
+                try (S3Object s3Object = s3Client.getObject(bucketName, summary.getKey()); BufferedReader reader = new BufferedReader(new InputStreamReader(s3Object.getObjectContent()))) {
+
+                    reader.lines().forEach(line -> {
+                        String word = line.split("\t")[0];
+                        if (word.contains("-")) {
+                            fs.put(word, 0.0);
+                            fIndexes.put(word, fIndexes.size());
+                        } else {
+                            ls.put(word, 0.0);
+                        }
+                    });
+
+                } catch (IOException e) {
+                    System.err.println("Error reading file " + summary.getKey() + ": " + e.getMessage());
+                }
+            }
+        }
+
+        @Override // like    0.43   OR    like,dog-subj     0.843   OR   dog-subj   0.31   OR   like|dog-subj   0.95
+        public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+            // mapper: list of L x F
+            // send l "f,p(l)" for every f, l "f,p(f)" for every f,etc.
+            // map input: l p(l) -> l "f,p(l)" for every f
+            // map input: f p(f) -> l "f,p(f)" for every l
+            // map input: l,f p(l,f) -> l "f,p(l,f)"
+
 
             // problem: l1 may get [f1, f2] l2 may get [f2, f1].  in the output vector, we need a unified format
             String[] rowParts = value.toString().split("\t");
             String lORf = rowParts[0]; // l or f ?
-            Double p = Double.parseDouble(rowParts[1]);
+            double p = Double.parseDouble(rowParts[1]);
 
-            if(lORf.indexOf('|') != -1) { //p(l|f)
+            if (lORf.indexOf('|') != -1) { //p(l|f)
                 String[] parts = lORf.split("\\|");
                 String l = parts[0];
                 String f = parts[1];
-                if(lfs.containsKey(l)) {
-                    //all fs that were near l
-                    HashMap<String, Pair<Double, Double>> fsHash = lfs.get(l);
-                    if(fsHash.containsKey(f)) {
-                        Pair<Double, Double> pLF = fsHash.get(f);
-                        pLF = new Pair<Double, Double>(pLF.getKey(), p);
-                        fsHash.put(f, pLF);
-                    } else {
-                        fsHash.put(f, new Pair<Double, Double>(0.0, p));
-                    }
-                } else {
-                    HashMap<String, Pair<Double, Double>> fsHash = new HashMap<>();
-                    fsHash.put(f, new Pair<>(0.0, p));
-                    lfs.put(l, fsHash);
-                }
-            } else if(lORf.indexOf(',') != -1) { // p(l,f)
+                mapKey.set(l);
+                context.write(mapKey, new Text(f + "#p(f|l)#" + p));
+            } else if (lORf.indexOf(',') != -1) { // p(l,f)
                 String[] parts = lORf.split(",");
                 String l = parts[0];
                 String f = parts[1];
-                if(lfs.containsKey(l)) {
-                    //all fs that were near l
-                    HashMap<String, Pair<Double, Double>> fsHash = lfs.get(l);
-                    if(fsHash.containsKey(f)) {
-                        Pair<Double, Double> pLF = fsHash.get(f);
-                        pLF = new Pair<Double, Double>(p, pLF.getValue());
-                        fsHash.put(f, pLF);
-                    } else {
-                        fsHash.put(f, new Pair<Double, Double>(p, 0.0));
-                    }
-                } else {
-                    HashMap<String, Pair<Double, Double>> fsHash = new HashMap<>();
-                    fsHash.put(f, new Pair<Double, Double>(p, 0.0));
-                    lfs.put(l, fsHash);
+                mapKey.set(l);
+                context.write(mapKey, new Text(f + "#p(l,f)#" + p));
+            } else if (lORf.indexOf('-') != -1) { // p(f)
+                //for given f, for every l, send <l, f+"#p(f)#"+p(f)>
+                for (String l : ls.keySet()) {
+                    mapKey.set(l);
+                    context.write(mapKey, new Text(lORf + "#p(f)#" + p));
+                    context.write(mapKey, new Text(lORf + "#Index#" + fIndexes.get(lORf)));
                 }
-            } else if(lORf.indexOf('-') != -1) { // p(f)
-                fs.put(lORf, p);
-                fIndexes.put(lORf, fi);
-                fi++;
-            } else { // p(l)
-                ls.put(lORf, p);
-            }
 
+            } else { // p(l)
+                //for every f, send <l, f+"#p(l)#"+p(l)>
+                for (String f : fs.keySet()) {
+                    mapKey.set(lORf);
+                    context.write(mapKey, new Text(f + "#p(l)#" + p));
+                }
+                mapKey.set(lORf);
+                context.write(mapKey, new Text("#L#" + ls.size()));
+            }
         }
 
+    }
+
+    public static class ReducerClass extends Reducer<Text, Text, Text, Text> {
+        private final Text mapKey = new Text();
+        // f, p(f)
+//        private final HashMap<String, Double> fs = new HashMap<String, Double>();
+
+        //f , place in co-vector
+//        int fi = 0;
+        private final HashMap<String, Integer> fIndexes = new HashMap<String, Integer>();
+
+        // l, p(l)
+//        private final HashMap<String, Double> ls = new HashMap<String, Double>();
+        // <l, <f, <p(l,f), p(f|l)>>>
+//        private final HashMap<String, HashMap<String, Pair<Double, Double>>> lfs = new HashMap<>();
+
+        HashMap<String, Integer> mapping = new HashMap<>(); //mapping of p(..) to index
+
         @Override
-        public void cleanup(Reducer<Text, IntWritable, Text, Text>.Context context) throws IOException, InterruptedException {
-            for(String l : ls.keySet()) {
-                for(String f : fs.keySet()) {
-                    // if l * f doesn't exist in lfs, add l * f with 0s
-                    if(!lfs.containsKey(l) || !lfs.get(l).containsKey(f)) {
-                        if(!lfs.containsKey(l)) {
-                            lfs.put(l, new HashMap<>());
-                        }
-                        lfs.get(l).put(f, new Pair<>(0.0, 0.0));
-                    }
+        protected void setup(Reducer<Text, Text, Text, Text>.Context context) throws IOException, InterruptedException {
+            mapping.put("p(l)", 0);
+            mapping.put("p(f)", 1);
+            mapping.put("p(l,f)", 2);
+            mapping.put("p(f|l)", 3);
+        }
+
+        @Override //l ["#L#586943", "f1#p(l)#p(l)","f2,p(l,f2)", "f1,p(f1)"...]
+        public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+            //iterate through values
+            //hashMap of: f, [p(l), p(f), p(l,f), p(f|l)]
+            // for a specific l, for every f, collect all of its data to a hashmap
+            double lsSize = 0;
+            HashMap<String, double[]> fData = new HashMap<>();
+            for (Text value : values) {
+                String[] parts = value.toString().split("#");
+                String f = parts[0];
+                String type = parts[1];
+                double p = Double.parseDouble(parts[2]);
+                if (type.equals("L")) {
+                    lsSize = p;
+                } else if (type.equals("Index")) {
+                    fIndexes.put(f, (int) p);
                 }
+                if (!fData.containsKey(f)) {
+                    double[] probs = {0.0, 0.0, 0.0, 0.0};
+                    fData.put(f, probs);
+                }
+                fData.get(f)[mapping.get(type)] = p; //todo: i hope it returns a ref like a normal language
+            }
+            // then perform the calculations and emit the results
+            int fsSize = fData.size();
+            // for every f, for every l,
+            Double[] v5 = new Double[fsSize];
+            Double[] v6 = new Double[fsSize];
+            Double[] v7 = new Double[fsSize];
+            Double[] v8 = new Double[fsSize];
+
+            for (Map.Entry<String, double[]> fProbs : fData.entrySet()) {
+                String f = fProbs.getKey();
+                double[] probs = fProbs.getValue();
+
+//                Text lkey = new Text(key.toString());
+
+                double pl = probs[0]; //p(l)
+                double pf = probs[1]; //p(f)
+                double plandf = probs[2]; //p(l,f)
+                double pfGivenl = probs[3]; //p(f|l)
+
+                //5: count(l,f) -> p(l,f) * L (because we get the probabilities, not counts)
+                double lf5 = plandf * lsSize;
+                //6: P(f|l)
+                double lf6 = pfGivenl;
+                //7: log_2(p(l,f)/(p(l)*p(f)))
+                double lf7 = Math.log(plandf / (pl * pf)) / Math.log(2);
+                //8: (p(l,f) - p(l)*p(f))/(sqrt(p(l)*p(f)))
+                double lf8 = (plandf - pl * pf) / Math.sqrt(pl * pf);
+
+                int index = fIndexes.get(f);
+
+                v5[index] = lf5;
+                v6[index] = lf6;
+                v7[index] = lf7;
+                v8[index] = lf8;
             }
 
-            int fsSize = fIndexes.size();
-            int lsSize = ls.size();
-
-            // <l, <f, <p(l,f), p(f|l)>>>
-            for(Map.Entry<String, HashMap<String, Pair<Double, Double>>> lHash: lfs.entrySet()) {
-                String l = lHash.getKey();
-                HashMap<String, Pair<Double, Double>> lh = lHash.getValue();
-
-                Double[] v5 = new Double[fsSize];
-                Double[] v6 = new Double[fsSize];
-                Double[] v7 = new Double[fsSize];
-                Double[] v8 = new Double[fsSize];
-
-                for(Map.Entry<String, Pair<Double, Double>> fProbs : lh.entrySet()) {
-                    String f = fProbs.getKey();
-                    Pair<Double, Double> prob = fProbs.getValue();
-
-                    Text lkey = new Text(l);
-
-                    double pl = ls.get(l); //p(l)
-                    double pf = fs.get(f); //p(f)
-                    double plandf = lfs.get(l).get(f).getKey(); //p(l,f)
-                    double pfGivenl = lfs.get(l).get(f).getValue(); //p(f|l)
-
-                    //5: count(l,f) -> p(l,f) * L (because we get the probabilities, not counts)
-                    double lf5 = plandf * lsSize;
-                    //6: P(f|l)
-                    double lf6 = pfGivenl;
-                    //7: log_2(p(l,f)/(p(l)*p(f)))
-                    double lf7 = Math.log(plandf / (pl * pf)) / Math.log(2);
-                    //8: (p(l,f) - p(l)*p(f))/(sqrt(p(l)*p(f)))
-                    double lf8 = (plandf - pl * pf) / Math.sqrt(pl * pf);
-
-                    int index = fIndexes.get(f);
-
-                    v5[index] = lf5;
-                    v6[index] = lf6;
-                    v7[index] = lf7;
-                    v8[index] = lf8;
-                }
-
-                //format is: l  5   [0.32, 0.52, 0.456, 0.65]
-                context.write(new Text(l + "\t5"), new Text(Arrays.toString(v5)));
-                context.write(new Text(l + "\t6"), new Text(Arrays.toString(v6)));
-                context.write(new Text(l + "\t7"), new Text(Arrays.toString(v7)));
-                context.write(new Text(l + "\t8"), new Text(Arrays.toString(v8)));
-            }
+            //format is: l  5   [0.32, 0.52, 0.456, 0.65]
+            context.write(new Text(key.toString() + "\t5"), new Text(Arrays.toString(v5)));
+            context.write(new Text(key.toString() + "\t6"), new Text(Arrays.toString(v6)));
+            context.write(new Text(key.toString() + "\t7"), new Text(Arrays.toString(v7)));
+            context.write(new Text(key.toString() + "\t8"), new Text(Arrays.toString(v8)));
         }
     }
 
     public static class PartitionerClass extends Partitioner<Text, IntWritable> {
         @Override
         public int getPartition(Text key, IntWritable value, int numPartitions) {
-            return 0; // we want everything to go to the same reducer boy
+            return Math.abs(key.toString().hashCode()) % 3;
         }
     }
 
@@ -279,6 +249,8 @@ public class Step2 {
         System.out.println("[DEBUG] STEP 2 started!");
         System.out.println(args.length > 0 ? args[0] : "no args");
         Configuration conf = new Configuration();
+
+
         Job job = Job.getInstance(conf, "Step 2");
         job.setJarByClass(Step2.class);
         job.setMapperClass(MapperClass.class);
@@ -290,7 +262,7 @@ public class Step2 {
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(Text.class);
 
-        TextInputFormat.addInputPath(job, new Path("s3://nivolarule05032025/probs.txt"));
+        TextInputFormat.addInputPath(job, new Path("s3://nivolarule05032025/output/output1"));
         FileOutputFormat.setOutputPath(job, new Path("s3://nivolarule05032025/landf.txt"));
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
