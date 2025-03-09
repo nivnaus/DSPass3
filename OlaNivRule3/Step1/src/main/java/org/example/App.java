@@ -20,7 +20,7 @@ public class App {
     public static AmazonEC2 ec2;
     public static AmazonElasticMapReduce emr;
 
-    public static int numberOfInstances = 3;
+    public static int numberOfInstances = 7;
 
     public static void main(String[]args){
         credentialsProvider = new ProfileCredentialsProvider();
@@ -40,7 +40,7 @@ public class App {
         System.out.println("list cluster");
         System.out.println(emr.listClusters());
 
-        // Step 1
+        // Step 1 todo: return
 
         HadoopJarStepConfig step1 = new HadoopJarStepConfig()
                 .withJar("s3://nivolarule05032025/jars/Step1.jar")
@@ -87,6 +87,7 @@ public class App {
                 .withName("Map reduce project")
                 .withInstances(instances)
                 .withSteps(stepConfig1, stepConfig2, stepConfig3)
+//                .withSteps(stepConfig2, stepConfig3)
                 .withLogUri("s3://nivolarule05032025/logs/")
                 .withServiceRole("EMR_DefaultRole")
                 .withJobFlowRole("EMR_EC2_DefaultRole")

@@ -211,7 +211,7 @@ public class Step3 {
     public static class PartitionerClass extends Partitioner<Text, IntWritable> {
         @Override
         public int getPartition(Text key, IntWritable value, int numPartitions) {
-            return Math.abs(key.hashCode()) % 3;
+            return Math.abs(key.hashCode()) % 7;
         }
     }
 

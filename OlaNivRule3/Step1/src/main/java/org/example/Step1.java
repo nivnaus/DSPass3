@@ -75,6 +75,15 @@ public class Step1 {
                 context.write(mapKey, one);
                 mapKey.set("*L3");
                 context.write(mapKey, one);
+                mapKey.set("*L4");
+                context.write(mapKey, one);
+                mapKey.set("*L5");
+                context.write(mapKey, one);
+                mapKey.set("*L6");
+                context.write(mapKey, one);
+                mapKey.set("*L7");
+                context.write(mapKey, one);
+
 
                 if(destinations.get(j) != 0) { // if there's an edge (not root)
                     String wordDesc =words.get(j) + "-" + descriptions.get(j);
@@ -97,6 +106,14 @@ public class Step1 {
                     mapKey.set("*F2");
                     context.write(mapKey, one);
                     mapKey.set("*F3");
+                    context.write(mapKey, one);
+                    mapKey.set("*F4");
+                    context.write(mapKey, one);
+                    mapKey.set("*F5");
+                    context.write(mapKey, one);
+                    mapKey.set("*F6");
+                    context.write(mapKey, one);
+                    mapKey.set("*F7");
                     context.write(mapKey, one);
                 }
             }
@@ -172,16 +189,16 @@ public class Step1 {
         @Override
         public int getPartition(Text key, IntWritable value, int numPartitions) {
             //so that every reducer will receive *F or *L for sure.
-            List<String> FAndL = Arrays.asList("*F1", "*F2", "*F3", "*L1", "*L2", "*L3");
+            List<String> FAndL = Arrays.asList("*F1", "*F2", "*F3","*F4", "*F5", "*F6", "*F7", "*L1", "*L2", "*L3", "*L4", "*L5", "*L6", "*L7");
             if(FAndL.contains(key.toString())){
                 return key.charAt(2) - '1';
             }
             if(key.find("#") != -1) { // +l, l#f we want +l and l#f to be together -> isolate +l in both
                 String l = "+" + key.toString().split("#")[0];
-                return Math.abs(l.hashCode()) % 3;
+                return Math.abs(l.hashCode()) % 7;
             }
 
-            return Math.abs(key.toString().hashCode()) % 3;
+            return Math.abs(key.toString().hashCode()) % 7;
         }
     }
 

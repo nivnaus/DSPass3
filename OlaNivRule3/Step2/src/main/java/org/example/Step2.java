@@ -61,30 +61,14 @@ public class Step2 {
             String dirPath = "output/output2/"; // add 00001, 00002...
 
 //            // Read file from S3
-//            try {
-//                S3Object s3Object = s3Client.getObject(bucketName, key);
-//                BufferedReader reader = new BufferedReader(new InputStreamReader(s3Object.getObjectContent()));
-//                String line; //  l\t0.0 or f\t0.0
-//                while ((line = reader.readLine()) != null) {
-//                    String word = line.split("\t")[0];
-//                    if (word.indexOf('-') != -1) { // feature
-//                        fs.put(word, 0.0);
-//                        fIndexes.put(word, fi);
-//                        fi++;
-//                    } else { //lexema
-//                        ls.put(word, 0.0);
-//                    }
-//                }
-//                reader.close();
-//            } catch (IOException e) {
-//                System.err.println("Error reading from S3: " + e.getMessage());
-//            }
 
             ListObjectsV2Result result = s3Client.listObjectsV2(bucketName, dirPath);
             for (S3ObjectSummary summary : result.getObjectSummaries()) {
-                try (S3Object s3Object = s3Client.getObject(bucketName, summary.getKey()); BufferedReader reader = new BufferedReader(new InputStreamReader(s3Object.getObjectContent()))) {
+                try (S3Object s3Object = s3Client.getObject(bucketName, summary.getKey());
+                     BufferedReader reader = new BufferedReader(new InputStreamReader(s3Object.getObjectContent()))) {
 
-                    reader.lines().forEach(line -> {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
                         String word = line.split("\t")[0];
                         if (word.contains("-")) {
                             fs.put(word, 0.0);
@@ -92,8 +76,7 @@ public class Step2 {
                         } else {
                             ls.put(word, 0.0);
                         }
-                    });
-
+                    }
                 } catch (IOException e) {
                     System.err.println("Error reading file " + summary.getKey() + ": " + e.getMessage());
                 }
@@ -238,10 +221,10 @@ public class Step2 {
         }
     }
 
-    public static class PartitionerClass extends Partitioner<Text, IntWritable> {
+    public static class PartitionerClass extends Partitioner<Text, Text> {
         @Override
-        public int getPartition(Text key, IntWritable value, int numPartitions) {
-            return Math.abs(key.toString().hashCode()) % 3;
+        public int getPartition(Text key, Text value, int numPartitions) {
+            return Math.abs(key.toString().hashCode()) % 7;
         }
     }
 
@@ -258,7 +241,7 @@ public class Step2 {
 //        job.setCombinerClass(ReducerClass.class);
         job.setReducerClass(ReducerClass.class);
         job.setMapOutputKeyClass(Text.class);
-        job.setMapOutputValueClass(IntWritable.class);
+        job.setMapOutputValueClass(Text.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(Text.class);
 
